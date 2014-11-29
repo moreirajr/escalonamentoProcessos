@@ -19,6 +19,7 @@
 #include <time.h>
 #include <sys/mman.h>
 
+
 #define QUANTUM 1	//unidade de tempo de tarefa, 1 segundo de execucao
 
 
@@ -33,6 +34,7 @@ typedef struct t{
 	 */
 	struct t *next;
 }Tarefa;
+
 
 /*
  Compartilhar tarefa entre processos:
@@ -61,9 +63,11 @@ tempo medio = tempo total da tarefa 1 + tempo total da tarefa 2 + ... dividido p
 
 */
 
+
 FILE *input, *output;
 Tarefa *tarefas_input, *tarefas_output, *lista_tarefas, *tarefa;	//tarefa =  compartilhada
-int *instante;
+int *instante,  n_processos;
+
 
 sem_t *mutex;
 sem_t *mutex2; 
@@ -87,11 +91,12 @@ Tarefa *alocarTarefa();
 //compilar:
 //gcc -pthread sched.c -o sched
 
+
 int main(int argc, char *argv[]) {
-	int n_processos, tempo_total = 0, shmID_1, shmID_2, status;
+	int tempo_total = 0, shmID_1, shmID_2, status;
 	float tempo_medio = 0;
 	long pid_filho1, pid_filho2;
-	key_t key_1 = 567194, key_2 = 567193;
+	key_t key_1 = 567194, key_2 = 567192;
 
 	
 	input = fopen(argv[2], "r");
@@ -101,13 +106,14 @@ int main(int argc, char *argv[]) {
 	
 	//compartilhar tarefa e instante entre os processos
 	instante = (int*) malloc (sizeof(int));
-	*instante = 0;
 	shmID_2 = shmget(key_2, sizeof(int), IPC_CREAT | 0666);
 	instante = shmat(shmID_2, NULL, 0);
+	*instante = 0;
 	
 	tarefas_input = criar_tarefas(tarefas_input, n_processos);		//armazena entrada do arquivo
 
-	if ( (shmID_1 = shmget(key_1, sizeof(Tarefa) * n_processos, IPC_CREAT | 0666)) < 0 ){
+	tarefa = (Tarefa*) malloc(sizeof(Tarefa));
+	if ( (shmID_1 = shmget(key_1, sizeof(Tarefa), IPC_CREAT | 0666)) < 0 ){
 		perror("shmget error");
 		exit(1);
 	}
@@ -115,6 +121,7 @@ int main(int argc, char *argv[]) {
 		perror("shmat error");
 		exit(1);
 	}
+	
 	
 	
 	mutex  = mmap(NULL,sizeof(sem_t), PROT_READ|PROT_WRITE, MAP_SHARED|MAP_ANONYMOUS, -1, 0);
@@ -146,12 +153,16 @@ int main(int argc, char *argv[]) {
 			tarefas_output[i].dados[1] = -1;
 		}
 		 while(1){
+			 fprintf(stderr, "[Processo CPU] Tempo: %d\n", tempo_total);
 			 sem_wait(mutex);
-			 if(tarefa==NULL)
+			 if(tarefa==NULL){
+				 fprintf(stderr, "Tarefa null no instante %d\n", *instante);
 				break;
-			 fprintf(stderr, "\nExecutando Tarefa %d...", tarefa->dados[0]);
+			}
+			 fprintf(stderr, "[Processo CPU] Executando Tarefa {%d;%d;%d;%d,%d}...\n", tarefa->dados[0], tarefa->dados[1], tarefa->dados[2], tarefa->dados[3], tarefa->dados[4]);
 			 sleep(QUANTUM);
-			 tarefa->dados[2] -= QUANTUM;		//tempo restante de execucao
+			 tarefa->dados[2] -= (int )QUANTUM;		//tempo restante de execucao
+			 fprintf(stderr, "\n>>>>> VALOR %d <<<<<<\n", tarefa->dados[2]);
 			 tempo_total += QUANTUM;
 			
 			 if(tarefas_output[ tarefa->dados[0] ].dados[1] == -1)
@@ -165,9 +176,9 @@ int main(int argc, char *argv[]) {
 		 //salvar saida
 		 output = fopen(argv[3], "w");
 		 for(i=0; i < n_processos; i++)
-			fprintf(output, "%d;%d;%d;\n", tarefas_output[i].dados[0], tarefas_output[i].dados[1], tarefas_output[i].dados[2]);
-		 
-		 fprintf(output, "Tempo Total: %d\nTempo medio: %f", tempo_total, tempo_medio);
+			fprintf(stderr, "%d;%d;%d;\n", tarefas_output[i].dados[0], tarefas_output[i].dados[1], tarefas_output[i].dados[2]);
+			//output 
+		 fprintf(stderr, "Tempo Total: %d\nTempo medio: %f", tempo_total, tempo_medio);
 		 fclose(output);
 		 exit(0);
 		 
@@ -176,11 +187,19 @@ int main(int argc, char *argv[]) {
 	 
 	 //processo escalonador
 	 if(pid_filho2 == 0){
-		 fprintf(stderr, "[Processo Escalonador]...\n ");
+		 fprintf(stderr, "\n[Processo Escalonador]...\n");
 		 input = fopen(argv[2], "r");
 			 			
 		 lerEntradasArquivo();
-			
+		 
+		 //teste
+		 /* 
+			 while(tarefas_input!=NULL){
+				fprintf(stderr, "%d;%d;%d;%d,%d;\n", tarefas_input->dados[0],tarefas_input->dados[1],tarefas_input->dados[2],tarefas_input->dados[3],tarefas_input->dados[4]);
+				tarefas_input = tarefas_input->next;
+			 }
+		 */
+			 
 				 
 		 if(!strcmp(argv[1], "FCFS"))
 			 FirstComeFirstServed();
@@ -224,40 +243,65 @@ void FirstComeFirstServed(){
 
 void RoundRobin(){
 	int escalonando = 1;
-	Tarefa *aux;
+	Tarefa *aux, *aux2;
 
-
+	
 	while(escalonando){
-		getTarefas(*instante);
-		tarefa = lista_tarefas;
-
-		fprintf(stderr, "\nEscalonando, tarefa%d no inst %d", tarefa->dados[0], *instante);
 		sem_wait(mutex2);
-		//esperar processador, decrementar tempo de execucao no processo do processador
+		
+		fprintf(stderr, "[RR] While\n");
+		getTarefas(*instante);
+		*tarefa = *lista_tarefas;
+
+		fprintf(stderr, "Escalonando tarefa %d no inst %d\n", tarefa->dados[0], *instante);
+		fprintf(stderr, "{Tarefa = %d;%d;%d,%d,%d;} | ",tarefa->dados[0],tarefa->dados[1],tarefa->dados[2],tarefa->dados[3],tarefa->dados[4]);
+		fprintf(stderr, "{1st Lista = %d;%d;%d,%d,%d;}\n",lista_tarefas->dados[0],lista_tarefas->dados[1],lista_tarefas->dados[2],lista_tarefas->dados[3],lista_tarefas->dados[4]);
+		
+		
 		sem_post(mutex);
 		sem_wait(mutex2);
+		
+		*lista_tarefas = *tarefa;
+		
+		fprintf(stderr, "Tarefa retornou com valor %d\n", tarefa->dados[2]);
 		if(tarefa->dados[2]==0){		//tempo de execucao
+			fprintf(stderr, "Removeu tarefa %d\n", tarefa->dados[0]);
 			aux = lista_tarefas;
 			lista_tarefas = lista_tarefas->next;
 			free(aux);
+			 
 		}
 		else
 		{	//colocar tarefa executada no final da fila
 			aux = lista_tarefas;
-			while(aux->next!=NULL)
+			while(aux->next!=NULL){
 				aux = aux->next;
+				fprintf(stderr, "Moveu pra tarefa %d\n", aux->dados[0]);
+
+			}
 
 			aux->next = lista_tarefas;
+			aux2 = lista_tarefas;
 			lista_tarefas = lista_tarefas->next;
-		}
+			aux2->next = NULL;
+			
+			/*
+			while(lista_tarefas != NULL){
+				fprintf(stderr, "{Lista = %d;%d;%d,%d,%d;}\n",lista_tarefas->dados[0],lista_tarefas->dados[1],lista_tarefas->dados[2],lista_tarefas->dados[3],lista_tarefas->dados[4]);
+				lista_tarefas = lista_tarefas->next; 
+			}
+			*/
+			
+			}
+			
 		
-		if(lista_tarefas==NULL)
-			escalonando = 0;
+			if(lista_tarefas==NULL)
+				escalonando = 0;
 
-		(*instante)++;
-		sem_post(mutex2);
+			(*instante)++;
+			sem_post(mutex2);
 
-	}
+		}
 
 }
 
@@ -304,30 +348,41 @@ void lerEntradasArquivo(){
 /* ########################################################## */
 
 void getTarefas(int n){
-	Tarefa *input_aux = tarefas_input, *aux2, *ant;
+	Tarefa *input_aux = tarefas_input, *aux2, *ant=NULL;
 
-	if(lista_tarefas==NULL)
+	fprintf(stderr, "entra __ n=%d\n ",n);
+	
+	if(lista_tarefas==NULL){
 		lista_tarefas = criar_tarefas(lista_tarefas,1);
-
-	aux2 = lista_tarefas;
-
-	while(aux2!=NULL){
-		ant = aux2;
-		aux2 = aux2->next;
+		aux2 = lista_tarefas;
 	}
-
-	while(input_aux!=NULL){
-		if(input_aux->dados[1] == n){				//instante de chegada
-			aux2 = criar_tarefas(aux2, 1);
-			aux2 = input_aux;
-			ant->next = aux2;
+	else if(n < n_processos){
+		aux2 = lista_tarefas;
+		while(aux2!=NULL){
+			ant = aux2;
+			aux2 = aux2->next;
 		}
-
-		ant = aux2;
-		aux2 = aux2->next;
-		input_aux = input_aux->next;
+		aux2 = criar_tarefas(lista_tarefas,1);
+		ant->next = aux2;
 	}
+	else return;
+	
+	
+	while(input_aux!=NULL){
+		fprintf(stderr, "{Input %d;%d;%d;%d,%d}\n", input_aux->dados[0],input_aux->dados[1],input_aux->dados[2],input_aux->dados[3],input_aux->dados[4]);
+		if(input_aux->dados[1] == n){				//instante de chegada
+			*aux2 = *input_aux; 					
+			if(ant!=NULL)
+				ant->next = aux2;
+			ant = aux2;
+			aux2 = aux2->next;
+		}
+		
+		input_aux = input_aux->next;
 
+	}
+	
+	fprintf(stderr, "<<< OUT >>>\n");
 
 }
 
@@ -365,11 +420,12 @@ Tarefa *criar_tarefas(Tarefa *t, int n){
 		aux = aux->next;
 	}
 
-
+	/*
 	aux = t;
 	for(i=0; i < n; i++)
 		if(aux!=NULL)
 			aux = aux->next;
+			*/
 
 	return t;
 }
