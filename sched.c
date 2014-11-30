@@ -81,7 +81,7 @@ int tamanho_alloc();
 void getTarefas(int n);
 Tarefa *criar_tarefas(Tarefa *t, int n);
 Tarefa *alocarTarefa();
-
+void fprinTest(Tarefa *t);
 
 // execucao: ./sched RR input.txt output.txt
 //simular execucao com comando sleep
@@ -161,8 +161,8 @@ int main(int argc, char *argv[]) {
 			}
 			 fprintf(stderr, "[Processo CPU] Executando Tarefa {%d;%d;%d;%d,%d}...\n", tarefa->dados[0], tarefa->dados[1], tarefa->dados[2], tarefa->dados[3], tarefa->dados[4]);
 			 sleep(QUANTUM);
-			 tarefa->dados[2] -= (int )QUANTUM;		//tempo restante de execucao
-			 fprintf(stderr, "\n>>>>> VALOR %d <<<<<<\n", tarefa->dados[2]);
+			 tarefa->dados[2] -= QUANTUM;		//tempo restante de execucao
+			
 			 tempo_total += QUANTUM;
 			
 			 if(tarefas_output[ tarefa->dados[0] ].dados[1] == -1)
@@ -192,13 +192,7 @@ int main(int argc, char *argv[]) {
 			 			
 		 lerEntradasArquivo();
 		 
-		 //teste
-		 /* 
-			 while(tarefas_input!=NULL){
-				fprintf(stderr, "%d;%d;%d;%d,%d;\n", tarefas_input->dados[0],tarefas_input->dados[1],tarefas_input->dados[2],tarefas_input->dados[3],tarefas_input->dados[4]);
-				tarefas_input = tarefas_input->next;
-			 }
-		 */
+		 //fprinTest(tarefas_input);
 			 
 				 
 		 if(!strcmp(argv[1], "FCFS"))
@@ -255,15 +249,15 @@ void RoundRobin(){
 
 		fprintf(stderr, "Escalonando tarefa %d no inst %d\n", tarefa->dados[0], *instante);
 		fprintf(stderr, "{Tarefa = %d;%d;%d,%d,%d;} | ",tarefa->dados[0],tarefa->dados[1],tarefa->dados[2],tarefa->dados[3],tarefa->dados[4]);
-		fprintf(stderr, "{1st Lista = %d;%d;%d,%d,%d;}\n",lista_tarefas->dados[0],lista_tarefas->dados[1],lista_tarefas->dados[2],lista_tarefas->dados[3],lista_tarefas->dados[4]);
+		fprintf(stderr, "Lista = ");
+		fprinTest(lista_tarefas);
 		
 		
 		sem_post(mutex);
 		sem_wait(mutex2);
 		
 		*lista_tarefas = *tarefa;
-		
-		fprintf(stderr, "Tarefa retornou com valor %d\n", tarefa->dados[2]);
+				
 		if(tarefa->dados[2]==0){		//tempo de execucao
 			fprintf(stderr, "Removeu tarefa %d\n", tarefa->dados[0]);
 			aux = lista_tarefas;
@@ -274,29 +268,23 @@ void RoundRobin(){
 		else
 		{	//colocar tarefa executada no final da fila
 			aux = lista_tarefas;
-			while(aux->next!=NULL){
+			while(aux->next!=NULL)
 				aux = aux->next;
-				fprintf(stderr, "Moveu pra tarefa %d\n", aux->dados[0]);
-
-			}
-
+				
 			aux->next = lista_tarefas;
 			aux2 = lista_tarefas;
 			lista_tarefas = lista_tarefas->next;
 			aux2->next = NULL;
 			
-			/*
-			while(lista_tarefas != NULL){
-				fprintf(stderr, "{Lista = %d;%d;%d,%d,%d;}\n",lista_tarefas->dados[0],lista_tarefas->dados[1],lista_tarefas->dados[2],lista_tarefas->dados[3],lista_tarefas->dados[4]);
-				lista_tarefas = lista_tarefas->next; 
-			}
-			*/
+			//fprinTest(lista_tarefas);
 			
 			}
 			
 		
-			if(lista_tarefas==NULL)
+			if(lista_tarefas==NULL){
 				escalonando = 0;
+				tarefa = NULL;
+			}
 
 			(*instante)++;
 			sem_post(mutex2);
@@ -362,8 +350,7 @@ void getTarefas(int n){
 			ant = aux2;
 			aux2 = aux2->next;
 		}
-		aux2 = criar_tarefas(lista_tarefas,1);
-		ant->next = aux2;
+		
 	}
 	else return;
 	
@@ -371,7 +358,10 @@ void getTarefas(int n){
 	while(input_aux!=NULL){
 		fprintf(stderr, "{Input %d;%d;%d;%d,%d}\n", input_aux->dados[0],input_aux->dados[1],input_aux->dados[2],input_aux->dados[3],input_aux->dados[4]);
 		if(input_aux->dados[1] == n){				//instante de chegada
-			*aux2 = *input_aux; 					
+			if(aux2==NULL)
+				aux2 = criar_tarefas(aux2, 1);
+			*aux2 = *input_aux;
+			aux2->next = NULL;
 			if(ant!=NULL)
 				ant->next = aux2;
 			ant = aux2;
@@ -446,3 +436,14 @@ Tarefa *alocarTarefa(){
 }
 
 /* ########################################################## */
+
+void fprinTest(Tarefa *t){
+	Tarefa *aux = t;
+	
+	
+	while(aux!=NULL){
+		fprintf(stderr, "{%d;%d;%d;%d,%d}  ", aux->dados[0],aux->dados[1],aux->dados[2], aux->dados[3], aux->dados[4]);
+		aux = aux->next;
+	}
+	fprintf(stderr, "\n");
+}
